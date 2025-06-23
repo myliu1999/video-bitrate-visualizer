@@ -13,6 +13,9 @@ from pathlib import Path
 from collections import defaultdict
 import argparse
 import csv
+import webbrowser
+
+import plotly.graph_objects as go
 
 import matplotlib.pyplot as plt
 
@@ -47,6 +50,11 @@ def parse_args() -> argparse.Namespace:
         "--stats",
         action="store_true",
         help="Overlay min/max/average bitrate on the plot",
+    )
+    parser.add_argument(
+        "--plotly-html",
+        type=Path,
+        help="Optional path to write interactive HTML plot using Plotly",
     )
     return parser.parse_args()
 
@@ -131,6 +139,23 @@ def plot_bitrate(
     plt.show()
 
 
+def plotly_bitrate(
+    times: list[float],
+    kbps: list[float],
+    video_name: str,
+    html_path: Path,
+) -> None:
+    fig = go.Figure(
+        data=go.Scatter(x=times, y=kbps, mode="lines", line=dict(width=1))
+    )
+    fig.update_layout(
+        title=f"Variable Bitrate – {video_name}",
+        xaxis_title="Time (s)",
+        yaxis_title="Bitrate (kbps)",
+    )
+    fig.write_html(str(html_path), auto_open=True)
+
+
 def export_data(
     times: list[float],
     kbps: list[float],
@@ -158,6 +183,9 @@ def main() -> None:
     times, kbps = aggregate_bitrate(packets, args.bucket)
 
     export_data(times, kbps, args.export_csv, args.export_json)
+
+    if args.plotly_html:
+        plotly_bitrate(times, kbps, args.video.name, args.plotly_html)
 
     plot_bitrate(
         times,
