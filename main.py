@@ -61,6 +61,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional path to write interactive HTML plot using Plotly",
     )
+    parser.add_argument(
+        "--target-bitrate",
+        type=float,
+        help="Optional target bitrate in kbps to show as a reference",
+    )
     return parser.parse_args()
 
 
@@ -129,6 +134,7 @@ def plot_bitrate(
     video_name: str,
     save_path: Path | None = None,
     show_stats: bool = False,
+    target_kbps: float | None = None,
 ) -> None:
     plt.figure(figsize=(10, 5))
     plt.plot(times, kbps, linewidth=1)
@@ -136,6 +142,13 @@ def plot_bitrate(
     plt.xlabel("Time (s)")
     plt.ylabel("Bitrate (kbps)")
     plt.grid(True, linestyle="--", linewidth=0.5)
+    if target_kbps is not None:
+        plt.axhline(
+            target_kbps,
+            linestyle="--",
+            color="red",
+            label=f"target {target_kbps:.0f} kbps",
+        )
     if show_stats and kbps:
         avg = sum(kbps) / len(kbps)
         mn = min(kbps)
@@ -150,6 +163,8 @@ def plot_bitrate(
             bbox=dict(boxstyle="round", fc="white", ec="gray", alpha=0.8),
         )
     plt.tight_layout()
+    if target_kbps is not None:
+        plt.legend()
     if save_path:
         plt.savefig(save_path)
     plt.show()
@@ -160,6 +175,7 @@ def plotly_bitrate(
     kbps: list[float],
     video_name: str,
     html_path: Path,
+    target_kbps: float | None = None,
 ) -> None:
     fig = go.Figure(data=go.Scatter(x=times, y=kbps, mode="lines", line=dict(width=1)))
     fig.update_layout(
@@ -167,6 +183,8 @@ def plotly_bitrate(
         xaxis_title="Time (s)",
         yaxis_title="Bitrate (kbps)",
     )
+    if target_kbps is not None:
+        fig.add_hline(y=target_kbps, line_dash="dash", line_color="red")
     fig.write_html(str(html_path), auto_open=True)
 
 
@@ -205,7 +223,13 @@ def main() -> None:
     export_data(times, kbps, args.export_csv, args.export_json)
 
     if args.plotly_html:
-        plotly_bitrate(times, kbps, args.video.name, args.plotly_html)
+        plotly_bitrate(
+            times,
+            kbps,
+            args.video.name,
+            args.plotly_html,
+            target_kbps=args.target_bitrate,
+        )
 
     plot_bitrate(
         times,
@@ -213,6 +237,7 @@ def main() -> None:
         args.video.name,
         save_path=args.save_plot,
         show_stats=args.stats,
+        target_kbps=args.target_bitrate,
     )
 
 

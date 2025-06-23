@@ -10,7 +10,7 @@ export bitrate data to CSV or JSON and save the plot image for later analysis.
 ```bash
 python main.py VIDEO [--bucket SECS] [--export-csv FILE] [--export-json FILE] \
                      [--save-plot IMAGE] [--stats] [--stats-file FILE] \
-                     [--plotly-html FILE]
+                     [--plotly-html FILE] [--target-bitrate KBPS]
 ```
 
 * `VIDEO` – path to the input video file.
@@ -22,6 +22,7 @@ python main.py VIDEO [--bucket SECS] [--export-csv FILE] [--export-json FILE] \
 * `--stats` – print and overlay minimum, maximum and average bitrates.
 * `--stats-file` – optional path to write the bitrate summary.
 * `--plotly-html` – write an interactive HTML plot using Plotly.
+* `--target-bitrate` – draw a reference line at the given average bitrate.
 
 Running the script pops up a plot window showing the average bitrate (in kbps)
 for each time bucket.
