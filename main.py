@@ -11,8 +11,44 @@ import json
 import subprocess
 from pathlib import Path
 from collections import defaultdict
+import argparse
+import csv
 
 import matplotlib.pyplot as plt
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Visualize and export video bitrate over time"
+    )
+    parser.add_argument("video", type=Path, help="Path to video file")
+    parser.add_argument(
+        "--bucket",
+        type=float,
+        default=1.0,
+        help="Bucket duration in seconds for bitrate aggregation",
+    )
+    parser.add_argument(
+        "--export-csv",
+        type=Path,
+        help="Optional path to write CSV bitrate data",
+    )
+    parser.add_argument(
+        "--export-json",
+        type=Path,
+        help="Optional path to write JSON bitrate data",
+    )
+    parser.add_argument(
+        "--save-plot",
+        type=Path,
+        help="Optional path to save the plotted graph as an image",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Overlay min/max/average bitrate on the plot",
+    )
+    return parser.parse_args()
 
 
 def probe_packets(video_path: Path) -> list[tuple[float, int]]:
@@ -63,28 +99,73 @@ def aggregate_bitrate(
     return times, kbps
 
 
-def plot_bitrate(times: list[float], kbps: list[float], video_name: str):
+def plot_bitrate(
+    times: list[float],
+    kbps: list[float],
+    video_name: str,
+    save_path: Path | None = None,
+    show_stats: bool = False,
+) -> None:
     plt.figure(figsize=(10, 5))
     plt.plot(times, kbps, linewidth=1)
     plt.title(f"Variable Bitrate – {video_name}")
     plt.xlabel("Time (s)")
     plt.ylabel("Bitrate (kbps)")
     plt.grid(True, linestyle="--", linewidth=0.5)
+    if show_stats and kbps:
+        avg = sum(kbps) / len(kbps)
+        mn = min(kbps)
+        mx = max(kbps)
+        text = f"min={mn:.0f} kbps\nmax={mx:.0f} kbps\navg={avg:.0f} kbps"
+        plt.annotate(
+            text,
+            xy=(0.99, 0.95),
+            xycoords="axes fraction",
+            ha="right",
+            va="top",
+            bbox=dict(boxstyle="round", fc="white", ec="gray", alpha=0.8),
+        )
     plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
     plt.show()
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python visualize_bitrate.py <video> [bucket_sec]")
-        sys.exit(1)
+def export_data(
+    times: list[float],
+    kbps: list[float],
+    csv_path: Path | None,
+    json_path: Path | None,
+) -> None:
+    if csv_path:
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["time_sec", "bitrate_kbps"])
+            for t, b in zip(times, kbps):
+                writer.writerow([t, b])
+    if json_path:
+        with open(json_path, "w") as f:
+            records = [
+                {"time_sec": t, "bitrate_kbps": b} for t, b in zip(times, kbps)
+            ]
+            json.dump(records, f, indent=2)
 
-    video_path = Path(sys.argv[1])
-    bucket = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
 
-    packets = probe_packets(video_path)
-    times, kbps = aggregate_bitrate(packets, bucket)
-    plot_bitrate(times, kbps, video_path.name)
+def main() -> None:
+    args = parse_args()
+
+    packets = probe_packets(args.video)
+    times, kbps = aggregate_bitrate(packets, args.bucket)
+
+    export_data(times, kbps, args.export_csv, args.export_json)
+
+    plot_bitrate(
+        times,
+        kbps,
+        args.video.name,
+        save_path=args.save_plot,
+        show_stats=args.stats,
+    )
 
 
 if __name__ == "__main__":

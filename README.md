@@ -2,17 +2,23 @@
 
 This repository contains a small Python script for inspecting the variable bitrate of
 an encoded video file. It relies on `ffprobe` from FFmpeg to collect per-packet
-information and uses `matplotlib` to plot bitrate over time.
+information and uses `matplotlib` to plot bitrate over time. The tool can also
+export bitrate data to CSV or JSON and save the plot image for later analysis.
 
 ## Usage
 
 ```bash
-python main.py <path/to/video.mp4> [bucket_seconds]
+python main.py VIDEO [--bucket SECS] [--export-csv FILE] [--export-json FILE] \
+                     [--save-plot IMAGE] [--stats]
 ```
 
-* `<path/to/video.mp4>` – path to the input video.
-* `bucket_seconds` – optional time window in seconds over which bytes are
+* `VIDEO` – path to the input video file.
+* `--bucket` – optional time window in seconds over which bytes are
   aggregated (defaults to `1`).
+* `--export-csv/--export-json` – write the aggregated time/bitrate pairs to
+  the specified file.
+* `--save-plot` – save the plot to an image file in addition to displaying it.
+* `--stats` – overlay minimum, maximum and average bitrates on the plot.
 
 Running the script pops up a plot window showing the average bitrate (in kbps)
 for each time bucket.
