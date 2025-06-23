@@ -66,6 +66,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         help="Optional target bitrate in kbps to show as a reference",
     )
+    parser.add_argument(
+        "--mark-iframes",
+        action="store_true",
+        help="Mark I-frame positions with vertical lines",
+    )
     return parser.parse_args()
 
 
@@ -94,6 +99,29 @@ def probe_packets(video_path: Path) -> list[tuple[float, int]]:
         size = int(pkt["size"])
         packets.append((pts, size))
     return packets
+
+
+def probe_iframe_times(video_path: Path) -> list[float]:
+    """Return presentation times for all I-frames in the video stream."""
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v",
+        "-show_entries",
+        "frame=pts_time,pict_type",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+    data = json.loads(result.stdout)
+    times = []
+    for frame in data.get("frames", []):
+        if frame.get("pict_type") == "I":
+            times.append(float(frame["pts_time"]))
+    return times
 
 
 def aggregate_bitrate(
@@ -135,7 +163,9 @@ def plot_bitrate(
     save_path: Path | None = None,
     show_stats: bool = False,
     target_kbps: float | None = None,
+    iframe_times: list[float] | None = None,
 ) -> None:
+    """Plot bitrate using matplotlib with optional I-frame markers."""
     plt.figure(figsize=(10, 5))
     plt.plot(times, kbps, linewidth=1)
     plt.title(f"Variable Bitrate – {video_name}")
@@ -162,6 +192,9 @@ def plot_bitrate(
             va="top",
             bbox=dict(boxstyle="round", fc="white", ec="gray", alpha=0.8),
         )
+    if iframe_times:
+        for t in iframe_times:
+            plt.axvline(t, linestyle=":", color="orange", alpha=0.7)
     plt.tight_layout()
     if target_kbps is not None:
         plt.legend()
@@ -176,7 +209,9 @@ def plotly_bitrate(
     video_name: str,
     html_path: Path,
     target_kbps: float | None = None,
+    iframe_times: list[float] | None = None,
 ) -> None:
+    """Write an interactive plotly HTML with optional I-frame markers."""
     fig = go.Figure(data=go.Scatter(x=times, y=kbps, mode="lines", line=dict(width=1)))
     fig.update_layout(
         title=f"Variable Bitrate – {video_name}",
@@ -185,6 +220,9 @@ def plotly_bitrate(
     )
     if target_kbps is not None:
         fig.add_hline(y=target_kbps, line_dash="dash", line_color="red")
+    if iframe_times:
+        for t in iframe_times:
+            fig.add_vline(x=t, line_dash="dot", line_color="orange", opacity=0.7)
     fig.write_html(str(html_path), auto_open=True)
 
 
@@ -211,6 +249,7 @@ def main() -> None:
 
     packets = probe_packets(args.video)
     times, kbps = aggregate_bitrate(packets, args.bucket)
+    iframes = probe_iframe_times(args.video) if args.mark_iframes else None
 
     mn, mx, avg = compute_stats(kbps)
     stats_text = f"min={mn:.0f} kbps\nmax={mx:.0f} kbps\navg={avg:.0f} kbps"
@@ -229,6 +268,7 @@ def main() -> None:
             args.video.name,
             args.plotly_html,
             target_kbps=args.target_bitrate,
+            iframe_times=iframes,
         )
 
     plot_bitrate(
@@ -238,6 +278,7 @@ def main() -> None:
         save_path=args.save_plot,
         show_stats=args.stats,
         target_kbps=args.target_bitrate,
+        iframe_times=iframes,
     )
 
 
