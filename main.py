@@ -49,7 +49,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stats",
         action="store_true",
-        help="Overlay min/max/average bitrate on the plot",
+        help="Overlay min/max/average bitrate on the plot and print them",
+    )
+    parser.add_argument(
+        "--stats-file",
+        type=Path,
+        help="Optional path to write bitrate statistics",
     )
     parser.add_argument(
         "--plotly-html",
@@ -66,15 +71,17 @@ def probe_packets(video_path: Path) -> list[tuple[float, int]]:
     """
     cmd = [
         "ffprobe",
-        "-v", "error",
-        "-select_streams", "v",            # video stream only
-        "-show_entries", "packet=pts_time,size",
-        "-of", "json",
+        "-v",
+        "error",
+        "-select_streams",
+        "v",  # video stream only
+        "-show_entries",
+        "packet=pts_time,size",
+        "-of",
+        "json",
         str(video_path),
     ]
-    result = subprocess.run(
-        cmd, check=True, text=True, capture_output=True
-    )
+    result = subprocess.run(cmd, check=True, text=True, capture_output=True)
     data = json.loads(result.stdout)
     packets = []
     for pkt in data.get("packets", []):
@@ -100,11 +107,20 @@ def aggregate_bitrate(
     kbps = []
     for idx in sorted(bucket_totals):
         midpoint = (idx + 0.5) * window_sec
-        bits = bucket_totals[idx] * 8        # bytes -> bits
-        rate = bits / window_sec / 1000      # bits/s -> kbps
+        bits = bucket_totals[idx] * 8  # bytes -> bits
+        rate = bits / window_sec / 1000  # bits/s -> kbps
         times.append(midpoint)
         kbps.append(rate)
     return times, kbps
+
+
+def compute_stats(kbps: list[float]) -> tuple[float, float, float]:
+    if not kbps:
+        return 0.0, 0.0, 0.0
+    mn = min(kbps)
+    mx = max(kbps)
+    avg = sum(kbps) / len(kbps)
+    return mn, mx, avg
 
 
 def plot_bitrate(
@@ -145,9 +161,7 @@ def plotly_bitrate(
     video_name: str,
     html_path: Path,
 ) -> None:
-    fig = go.Figure(
-        data=go.Scatter(x=times, y=kbps, mode="lines", line=dict(width=1))
-    )
+    fig = go.Figure(data=go.Scatter(x=times, y=kbps, mode="lines", line=dict(width=1)))
     fig.update_layout(
         title=f"Variable Bitrate – {video_name}",
         xaxis_title="Time (s)",
@@ -170,9 +184,7 @@ def export_data(
                 writer.writerow([t, b])
     if json_path:
         with open(json_path, "w") as f:
-            records = [
-                {"time_sec": t, "bitrate_kbps": b} for t, b in zip(times, kbps)
-            ]
+            records = [{"time_sec": t, "bitrate_kbps": b} for t, b in zip(times, kbps)]
             json.dump(records, f, indent=2)
 
 
@@ -181,6 +193,14 @@ def main() -> None:
 
     packets = probe_packets(args.video)
     times, kbps = aggregate_bitrate(packets, args.bucket)
+
+    mn, mx, avg = compute_stats(kbps)
+    stats_text = f"min={mn:.0f} kbps\nmax={mx:.0f} kbps\navg={avg:.0f} kbps"
+    if args.stats:
+        print(stats_text)
+    if args.stats_file:
+        with open(args.stats_file, "w") as f:
+            f.write(stats_text + "\n")
 
     export_data(times, kbps, args.export_csv, args.export_json)
 
